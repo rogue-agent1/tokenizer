@@ -1,9 +1,11 @@
-# text-tokenizer
+# tokenizer
 
-Text tokenizer with BPE-style subword splitting. Single-file Python CLI, zero dependencies.
+Configurable lexical tokenizer with regex rules.
 
 ## Usage
 
 ```bash
-python3 tokenizer.py
+python3 tokenizer.py test
 ```
+
+Zero dependencies. Python 3.8+.
