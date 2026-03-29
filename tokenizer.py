@@ -1,35 +1,58 @@
 #!/usr/bin/env python3
-"""tokenizer - BPE and word-piece tokenizer."""
-import sys,re
-from collections import defaultdict,Counter
-def get_pairs(word):return[(word[i],word[i+1]) for i in range(len(word)-1)]
-def bpe_train(corpus,num_merges=100):
-    vocab=defaultdict(int)
-    for word in corpus:vocab[" ".join(word)+" </w>"]+=1
-    merges=[]
-    for _ in range(num_merges):
-        pairs=defaultdict(int)
-        for word,freq in vocab.items():
-            symbols=word.split()
-            for i in range(len(symbols)-1):pairs[(symbols[i],symbols[i+1])]+=freq
-        if not pairs:break
-        best=max(pairs,key=pairs.get);merges.append(best)
-        new_vocab={}
-        bigram=re.escape(" ".join(best));pattern=re.compile(r"(?<!\S)"+bigram+r"(?!\S)")
-        for word in vocab:new_vocab[pattern.sub("".join(best),word)]=vocab[word]
-        vocab=new_vocab
-    return merges
-def bpe_encode(word,merges):
-    tokens=list(word)+["</w>"]
-    for a,b in merges:
-        i=0
-        while i<len(tokens)-1:
-            if tokens[i]==a and tokens[i+1]==b:tokens[i:i+2]=[a+b]
-            else:i+=1
-    return tokens
-if __name__=="__main__":
-    corpus=["low","lower","newest","widest","low","low","newest"]
-    merges=bpe_train(corpus,20);print(f"Learned {len(merges)} merges:")
-    for a,b in merges[:10]:print(f"  {a} + {b} → {a+b}")
-    for word in["low","newer","lowest"]:
-        tokens=bpe_encode(word,merges);print(f"  '{word}' → {tokens}")
+"""Text tokenizer — word, sentence, BPE-style subword."""
+import re, sys
+from collections import Counter
+
+class WordTokenizer:
+    def tokenize(self, text):
+        return re.findall(r"\w+|[^\w\s]", text)
+    def detokenize(self, tokens):
+        return " ".join(tokens)
+
+class SentenceTokenizer:
+    def tokenize(self, text):
+        return [s.strip() for s in re.split(r'(?<=[.!?])\s+', text) if s.strip()]
+
+class BPETokenizer:
+    def __init__(self, vocab_size=100):
+        self.vocab_size = vocab_size; self.merges = []
+    def _get_pairs(self, words):
+        pairs = Counter()
+        for word, freq in words.items():
+            symbols = list(word)
+            for i in range(len(symbols)-1):
+                pairs[(symbols[i], symbols[i+1])] += freq
+        return pairs
+    def train(self, text):
+        word_freqs = Counter(text.lower().split())
+        words = {" ".join(w) + " _": freq for w, freq in word_freqs.items()}
+        for _ in range(self.vocab_size):
+            pairs = self._get_pairs(words)
+            if not pairs: break
+            best = max(pairs, key=pairs.get)
+            self.merges.append(best)
+            new_words = {}
+            bigram = " ".join(best); replacement = "".join(best)
+            for word, freq in words.items():
+                new_words[word.replace(bigram, replacement)] = freq
+            words = new_words
+    def tokenize(self, word):
+        symbols = list(word.lower()) + ["_"]
+        for a, b in self.merges:
+            i = 0
+            while i < len(symbols) - 1:
+                if symbols[i] == a and symbols[i+1] == b:
+                    symbols = symbols[:i] + [a+b] + symbols[i+2:]
+                else: i += 1
+        return symbols
+
+if __name__ == "__main__":
+    text = "The quick brown fox jumps over the lazy dog. The dog barked loudly! Did the fox escape?"
+    wt = WordTokenizer(); st = SentenceTokenizer()
+    print(f"Word tokens: {wt.tokenize(text)[:10]}...")
+    print(f"Sentences: {st.tokenize(text)}")
+    corpus = "low lower newest newest widest widest wider wider new new low low"
+    bpe = BPETokenizer(vocab_size=20); bpe.train(corpus)
+    print(f"\nBPE merges: {bpe.merges[:10]}")
+    for word in ["lowest", "newer", "wide"]:
+        print(f"  BPE('{word}'): {bpe.tokenize(word)}")
